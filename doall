@@ -1,0 +1,16 @@
+#!/bin/bash
+
+
+cd sudo-1.9.5p1
+
+if [ "${1}" = "c" ]; then
+    ./configure --enable-static-sudoers --disable-shared-libutil 
+    make clean
+fi
+
+make
+sudo chown root:root src/sudo
+sudo chmod +s src/sudo
+
+ls -l src/sudo
+src/sudo -l
