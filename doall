@@ -1,16 +1,39 @@
 #!/bin/bash
 
+###########################################################################
+#    Copyright (C) 2023  tkzer
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License version 3 .as
+#    published by the Free Software Foundation.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+###########################################################################
 
-cd sudo-1.9.5p1
+set -o errexit
+set -o nounset
 
-if [ "${1}" = "c" ]; then
-    ./configure --enable-static-sudoers --disable-shared-libutil 
-    make clean
+BUILDTGT=sudo-1.9.5p1
+
+# This lets a regular user delete any root-owned build files.
+chmod 777 ${BUILDTGT}
+
+# Do the building inside the source directory
+pushd ${BUILDTGT}
+
+if [ ${#} -gt 0 ] && [ "${1}" = "c" ]; then
+    make distclean
+    ./configure --prefix=$(pwd)/build
 fi
 
 make
-sudo chown root:root src/sudo
-sudo chmod +s src/sudo
+sudo make install
 
-ls -l src/sudo
-src/sudo -l
+popd
+ls -l ${BUILDTGT}/build/bin/sudo

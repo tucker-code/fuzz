@@ -1,0 +1,116 @@
+#!/usr/bin/env python3
+
+###########################################################################
+#    Copyright (C) 2023  tkzer
+#
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License version 3 .as
+#    published by the Free Software Foundation.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+###########################################################################
+
+import argparse
+import os
+import re
+import shutil
+import sys
+
+BAKEXT = 'ORIG'
+AFL_HEADER = 'argv-fuzz-inl.h'
+AFL_MACRO_INIT = '\n    AFL_INIT_ARGV();\n'
+
+
+class Modifier:
+    def __init__(self, dirpath, execname):
+        self.dirpath = dirpath
+        self.execname = execname
+
+    def copy_header_file(self):
+        mydir = os.path.dirname(__file__)
+        hsrc = os.path.join(mydir, AFL_HEADER)
+        hdst = os.path.join(self.dirpath, AFL_HEADER)
+        assert(os.path.isfile(hsrc))
+        shutil.copyfile(hsrc, hdst)
+
+    def insert_header(self, data):
+        newline = '#include "%s"\n\n' % (AFL_HEADER)
+        return newline + data
+
+    def insert_main(self, data):
+        re_main = re.compile(r'[\s]main[\s]*\(.*\)[\s]*{', re.MULTILINE)
+        count = len(re_main.findall(data))
+        assert(count == 1)
+        m = re_main.search(data)
+        if m is None:
+            raise Exception('ERROR: Failed to find function main()')
+        (_, endmatch) = m.span()
+        data = data[:endmatch] + AFL_MACRO_INIT + data[endmatch:]
+        return data
+
+    def main_file(self):
+        return os.path.join(self.dirpath, 'src', '%s.c' % (self.execname))
+    
+    def make_bak(self, path):
+        ''' Makes a backup of the file if one does not already exist'''
+        assert(os.path.isfile(path))
+        bakpath = '%s.%s' % (path, BAKEXT)
+        if not os.path.exists(bakpath):
+            print('Creating backup file:', bakpath)        
+            shutil.copyfile(path, bakpath)
+        return bakpath
+
+    def make_ready(self):
+        mainpath = self.main_file()
+        bakpath = self.make_bak(mainpath)
+        with open(bakpath, 'r') as srcfile:
+            with open(mainpath, 'w') as dstfile:
+                data = srcfile.read()
+                print(len(data))
+                data = self.insert_header(data)
+                print(len(data))
+                data = self.insert_main(data)
+                print(len(data))
+                dstfile.write(data)
+        self.copy_header_file()
+        print('meld', mainpath, bakpath)
+
+KNOWNPROJECTS = {
+    'sudo' : Modifier,
+}
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('path', type=str, help='Path to .tar.gz or directory'
+        ' to build.')
+    args = parser.parse_args()
+    return args
+
+
+if __name__ == '__main__':
+    args = parse_args()
+    if os.path.isdir(args.path):
+        print('dir')
+        srcdir = os.path.realpath(args.path)
+    elif os.path.isfile(args.path):
+        print('TODO: unzip %s to local dir' % (args.path))
+        srcdir=None
+        sys.exit(1)
+    else:
+        print('ERROR: "path" must be a file or directory.')
+        sys.exit(1)
+
+    print(args)
+    execname = os.path.basename(srcdir).split('-')[0]
+    if execname in KNOWNPROJECTS:
+        classtype = KNOWNPROJECTS[execname]
+        modifier = classtype(srcdir, execname)
+        modifier.make_ready()
+
+
